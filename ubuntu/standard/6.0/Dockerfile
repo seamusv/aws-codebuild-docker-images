@@ -99,38 +99,15 @@ RUN curl https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip -o /tmp/awscli
     && rm -rf /opt/aws \
     && aws --version
 
-# Install env tools for runtimes
-# Dotnet
-ENV PATH "/root/.dotnet/:/root/.dotnet/tools/:$PATH"
-RUN set -ex  \
-&& wget -qO /usr/local/bin/dotnet-install.sh https://dot.net/v1/dotnet-install.sh \
-&& chmod +x /usr/local/bin/dotnet-install.sh
-
 #nodejs
 ARG SRC_DIR="/usr/src"
 ARG N_SRC_DIR="$SRC_DIR/n"
 RUN git clone https://github.com/tj/n $N_SRC_DIR \
      && cd $N_SRC_DIR && make install 
 
-#ruby
-ARG RBENV_SRC_DIR="/usr/local/rbenv"
-
-ENV PATH="/root/.rbenv/shims:$RBENV_SRC_DIR/bin:$RBENV_SRC_DIR/shims:$PATH" \
-    RUBY_BUILD_SRC_DIR="$RBENV_SRC_DIR/plugins/ruby-build"
-
-RUN set -ex \
-    && git clone https://github.com/rbenv/rbenv.git $RBENV_SRC_DIR \
-    && mkdir -p $RBENV_SRC_DIR/plugins \
-    && git clone https://github.com/rbenv/ruby-build.git $RUBY_BUILD_SRC_DIR \
-    && sh $RUBY_BUILD_SRC_DIR/install.sh
-
 #python
 RUN curl https://pyenv.run | bash
 ENV PATH="/root/.pyenv/shims:/root/.pyenv/bin:$PATH"
-
-#php
-RUN curl -L https://raw.githubusercontent.com/phpenv/phpenv-installer/master/bin/phpenv-installer | bash
-ENV PATH="/root/.phpenv/shims:/root/.phpenv/bin:$PATH"
 
 #go
 RUN git clone https://github.com/syndbg/goenv.git $HOME/.goenv
@@ -141,47 +118,11 @@ ENV GOPATH="/go"
 #=======================End of layer: tools  =================
 FROM tools AS runtimes
 
-#****************     .NET-CORE     *******************************************************
-
-ENV DOTNET_6_SDK_VERSION="6.0.301"
-ENV DOTNET_ROOT="/root/.dotnet"
-
-# Add .NET Core 6 Global Tools install folder to PATH
-RUN  /usr/local/bin/dotnet-install.sh -v $DOTNET_6_SDK_VERSION \
-     && dotnet --list-sdks \
-     && rm -rf /tmp/*
-
-# Trigger the population of the local package cache
-ENV NUGET_XMLDOC_MODE skip
-RUN set -ex \
-    && mkdir warmup \
-    && cd warmup \
-    && dotnet new \
-    && cd .. \
-    && rm -rf warmup \
-    && rm -rf /tmp/NuGetScratch
-
-# Install Powershell Core
-# See instructions at https://docs.microsoft.com/en-us/powershell/scripting/setup/installing-powershell-core-on-linux
-ARG POWERSHELL_VERSION=7.2.4
-ARG POWERSHELL_DOWNLOAD_URL=https://github.com/PowerShell/PowerShell/releases/download/v$POWERSHELL_VERSION/powershell-$POWERSHELL_VERSION-linux-x64.tar.gz
-ARG POWERSHELL_DOWNLOAD_SHA=935B874A2E5F5662AB23EFBE7392DC96C27D4FD064041D28A25A487EC5F6CC2E
-
-RUN set -ex \
-    && curl -SL $POWERSHELL_DOWNLOAD_URL --output powershell.tar.gz \
-    && echo "$POWERSHELL_DOWNLOAD_SHA powershell.tar.gz" | sha256sum -c - \
-    && mkdir -p /opt/microsoft/powershell/$POWERSHELL_VERSION \
-    && tar zxf powershell.tar.gz -C /opt/microsoft/powershell/$POWERSHELL_VERSION \
-    && rm powershell.tar.gz \
-    && ln -s /opt/microsoft/powershell/$POWERSHELL_VERSION/pwsh /usr/bin/pwsh
-#****************     END .NET-CORE     *******************************************************
-
-
 #****************      NODEJS     ****************************************************
 
-ENV NODE_16_VERSION="16.15.1"
+ENV NODE_19_VERSION="19.3.0"
 
-RUN  n $NODE_16_VERSION && npm install --save-dev -g -f grunt && npm install --save-dev -g -f grunt-cli && npm install --save-dev -g -f webpack \
+RUN  n $NODE_19_VERSION && npm install --save-dev -g -f grunt && npm install --save-dev -g -f grunt-cli && npm install --save-dev -g -f webpack \
      && curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg | apt-key add - \
      && echo "deb https://dl.yarnpkg.com/debian/ stable main" | tee /etc/apt/sources.list.d/yarn.list \
      && apt-get update && apt-get install -y -qq --no-install-recommends yarn \
@@ -189,15 +130,6 @@ RUN  n $NODE_16_VERSION && npm install --save-dev -g -f grunt && npm install --s
      && cd / && rm -rf $N_SRC_DIR && rm -rf /tmp/*
 
 #****************      END NODEJS     ****************************************************
-
-#**************** RUBY *********************************************************
-
-ENV RUBY_31_VERSION="3.1.2"
-
-RUN rbenv install $RUBY_31_VERSION && rm -rf /tmp/* \
-    && rbenv global $RUBY_31_VERSION && ruby -v
-
-#**************** END RUBY *****************************************************
 
 #**************** PYTHON *****************************************************
 ENV PYTHON_310_VERSION="3.10.5"
@@ -215,22 +147,11 @@ RUN set -ex \
 
 #**************** END PYTHON *****************************************************
 
-#****************      PHP     ****************************************************
-ENV PHP_81_VERSION="8.1.6"
-
-COPY tools/runtime_configs/php/$PHP_81_VERSION /root/.phpenv/plugins/php-build/share/php-build/definitions/$PHP_81_VERSION
-RUN phpenv install $PHP_81_VERSION && rm -rf /tmp/* && phpenv global $PHP_81_VERSION
-RUN echo "memory_limit = 1G;" >> "/root/.phpenv/versions/$PHP_81_VERSION/etc/conf.d/memory.ini"
-
-# Install Composer globally
-RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/bin --filename=composer
-#****************      END PHP     ****************************************************
-
 #****************     GOLANG     ****************************************************
-ENV GOLANG_18_VERSION="1.18.8"
+ENV GOLANG_19_VERSION="1.19.5"
 
-RUN goenv install $GOLANG_18_VERSION && rm -rf /tmp/* && \
-    goenv global  $GOLANG_18_VERSION && \
+RUN goenv install $GOLANG_19_VERSION && rm -rf /tmp/* && \
+    goenv global  $GOLANG_19_VERSION && \
     go env -w GO111MODULE=auto
 
 RUN go get -u github.com/golang/dep/cmd/dep
@@ -239,99 +160,6 @@ RUN go get -u github.com/golang/dep/cmd/dep
 #=======================End of layer: runtimes  =================
 
 FROM runtimes AS runtimes_n_corretto
-
-#****************      JAVA     ****************************************************
-ENV JAVA_17_HOME="/usr/lib/jvm/java-17-amazon-corretto" \
-    JDK_17_HOME="/usr/lib/jvm/java-17-amazon-corretto" \
-    JRE_17_HOME="/usr/lib/jvm/java-17-amazon-corretto"
-ARG ANT_VERSION=1.10.12
-ARG MAVEN_HOME="/opt/maven"
-ARG MAVEN_VERSION=3.8.7
-ARG INSTALLED_GRADLE_VERSIONS="7.4.2"
-ARG GRADLE_VERSION=7.4.2
-ARG SBT_VERSION=1.6.2
-ARG GRADLE_PATH="$SRC_DIR/gradle"
-ARG ANT_DOWNLOAD_SHA512="2287dc5cfc21043c14e5413f9afb1c87c9f266ec2a9ba2d3bf2285446f6e4ccb59b558bf2e5c57911a05dfa293c7d5c7ad60ac9f744ba11406f4e6f9a27b2403"
-ARG MAVEN_DOWNLOAD_SHA512="21c2be0a180a326353e8f6d12289f74bc7cd53080305f05358936f3a1b6dd4d91203f4cc799e81761cf5c53c5bbe9dcc13bdb27ec8f57ecf21b2f9ceec3c8d27"
-ARG GRADLE_DOWNLOADS_SHA256="e6d864e3b5bc05cc62041842b306383fc1fefcec359e70cebb1d470a6094ca82 7.4.2"
-ARG SBT_DOWNLOAD_SHA256="637637b6c4e6fa04ab62cd364061e32b12480b09001cd23303df62b36fadd440"
-ENV LOG4J_UNSAFE_VERSIONS="2.11.1 1.2.8"
-
-ARG MAVEN_CONFIG_HOME="/root/.m2"
-
-ENV JAVA_HOME="$JAVA_17_HOME" \
-    JDK_HOME="$JDK_17_HOME" \
-    JRE_HOME="$JRE_17_HOME"
-
-ENV PATH="${PATH}:/opt/tools"
-
-RUN set -ex \
-    && apt-get update \
-    && apt-get install -y -qq software-properties-common apt-utils \
-    # Install Corretto 17
-    && wget -qO- https://apt.corretto.aws/corretto.key | apt-key add - \
-    && add-apt-repository 'deb https://apt.corretto.aws stable main' \
-    && apt-get update \
-    && apt-get install -y -qq java-17-amazon-corretto-jdk \
-    && apt-get install -y -qq --no-install-recommends ca-certificates-java \
-    # Ensure Java cacerts symlink points to valid location
-    && update-ca-certificates -f \
-    && dpkg --add-architecture i386 \
-    && apt-get update \
-    && for tool_path in $JAVA_HOME/bin/*; do \
-          tool=`basename $tool_path`; \
-          update-alternatives --install /usr/bin/$tool $tool $tool_path 10000; \
-          update-alternatives --set $tool $tool_path; \
-        done \
-     && rm $JAVA_HOME/lib/security/cacerts && ln -s /etc/ssl/certs/java/cacerts $JAVA_HOME/lib/security/cacerts \
-    # Install Ant
-    && curl -LSso /var/tmp/apache-ant-$ANT_VERSION-bin.tar.gz https://archive.apache.org/dist/ant/binaries/apache-ant-$ANT_VERSION-bin.tar.gz  \
-    && echo "$ANT_DOWNLOAD_SHA512 /var/tmp/apache-ant-$ANT_VERSION-bin.tar.gz" | sha512sum -c - \
-    && tar -xzf /var/tmp/apache-ant-$ANT_VERSION-bin.tar.gz -C /opt \
-    && rm /var/tmp/apache-ant-$ANT_VERSION-bin.tar.gz \
-    && update-alternatives --install /usr/bin/ant ant /opt/apache-ant-$ANT_VERSION/bin/ant 10000
-
-RUN set -ex \
-    # Install Maven
-    && mkdir -p $MAVEN_HOME \
-    && curl -LSso /var/tmp/apache-maven-$MAVEN_VERSION-bin.tar.gz https://apache.org/dist/maven/maven-3/$MAVEN_VERSION/binaries/apache-maven-$MAVEN_VERSION-bin.tar.gz \
-    && echo "$MAVEN_DOWNLOAD_SHA512 /var/tmp/apache-maven-$MAVEN_VERSION-bin.tar.gz" | sha512sum -c - \
-    && tar xzf /var/tmp/apache-maven-$MAVEN_VERSION-bin.tar.gz -C $MAVEN_HOME --strip-components=1 \
-    && rm /var/tmp/apache-maven-$MAVEN_VERSION-bin.tar.gz \
-    && update-alternatives --install /usr/bin/mvn mvn /opt/maven/bin/mvn 10000 \
-    && mkdir -p $MAVEN_CONFIG_HOME \
-    # Install Gradle
-    && mkdir -p $GRADLE_PATH \
-    && for version in $INSTALLED_GRADLE_VERSIONS; do { \
-       wget -q "https://services.gradle.org/distributions/gradle-$version-all.zip" -O "$GRADLE_PATH/gradle-$version-all.zip" \
-       && unzip -q "$GRADLE_PATH/gradle-$version-all.zip" -d /usr/local \
-       && echo "$GRADLE_DOWNLOADS_SHA256" | grep "$version" | sed "s|$version|$GRADLE_PATH/gradle-$version-all.zip|" | sha256sum -c - \
-       && rm "$GRADLE_PATH/gradle-$version-all.zip" \
-       && mkdir "/tmp/gradle-$version" \
-       && "/usr/local/gradle-$version/bin/gradle" -p "/tmp/gradle-$version" init \
-       && "/usr/local/gradle-$version/bin/gradle" -p "/tmp/gradle-$version" wrapper \
-       # Android Studio uses the "-all" distribution for it's wrapper script.
-       && perl -pi -e "s/gradle-$version-bin.zip/gradle-$version-all.zip/" "/tmp/gradle-$version/gradle/wrapper/gradle-wrapper.properties" \
-       && "/tmp/gradle-$version/gradlew" -p "/tmp/gradle-$version" init \
-       && rm -rf "/tmp/gradle-$version" \
-       && if [ "$version" != "$GRADLE_VERSION" ]; then rm -rf "/usr/local/gradle-$version"; fi; \
-     }; done \
-    # Install default GRADLE_VERSION to path
-    && ln -s /usr/local/gradle-$GRADLE_VERSION/bin/gradle /usr/bin/gradle \
-    && rm -rf $GRADLE_PATH \
-    # Install SBT
-    && curl -fSL "https://github.com/sbt/sbt/releases/download/v${SBT_VERSION}/sbt-${SBT_VERSION}.tgz" -o sbt.tgz \
-    && echo "${SBT_DOWNLOAD_SHA256} *sbt.tgz" | sha256sum -c - \
-    && tar xzf sbt.tgz -C /usr/local/bin/ \
-    && rm sbt.tgz \
-    && for version in $LOG4J_UNSAFE_VERSIONS; do find / -name log4j*-$version.jar | xargs rm -f; done
-
-ENV PATH "/usr/local/bin/sbt/bin:$PATH"
-RUN sbt version -Dsbt.rootdir=true
-# Cleanup
-RUN rm -fr /var/lib/apt/lists/* /tmp/* /var/tmp/* \
-    && apt-get clean
-#****************     END JAVA     ****************************************************
 
 #****************        DOCKER    *********************************************
 ARG DOCKER_BUCKET="download.docker.com"
@@ -368,11 +196,9 @@ VOLUME /var/lib/docker
 FROM runtimes_n_corretto AS std_v6
 
 # Activate runtime versions specific to image version.
-RUN n $NODE_16_VERSION
+RUN n $NODE_19_VERSION
 RUN pyenv  global $PYTHON_310_VERSION
-RUN phpenv global $PHP_81_VERSION
-RUN rbenv  global $RUBY_31_VERSION
-RUN goenv global  $GOLANG_18_VERSION
+RUN goenv global  $GOLANG_19_VERSION
 
 # Configure SSH
 COPY ssh_config /root/.ssh/config
